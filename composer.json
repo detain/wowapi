@@ -1,0 +1,22 @@
+{
+    "name": "detain/wowapi",
+    "description": "World of Warcraft API Client",
+    "type": "project",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Joe Huss",
+            "email": "detain@interserver.net"
+        }
+    ],
+    "require": {
+        "guzzlehttp/guzzle": "*",
+        "mnib-dev/guzzle-throttle-middleware": "dev-master"
+    },
+	"repositories": [
+		{
+			"type": "git",
+			"url": "https://github.com/mynameisbogdan/guzzle-throttle-middleware"
+		}
+]
+}
