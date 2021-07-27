@@ -1,4 +1,7 @@
 <?php
+/**
+* https://wowpedia.fandom.com/wiki/Pet_Battle_System
+*/
 
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
@@ -24,7 +27,8 @@ class Wow
 		'modified-crafting/category', 'modified-crafting', 'modified-crafting/reagent-slot-type', 'mount', 'mythic-keystone/dungeon', 'mythic-keystone',
 		'mythic-keystone/period', 'mythic-keystone/season', 'pet-ability', 'pet', 'playable-class', 'playable-race', 'playable-specialization', 'power-type',
 		'profession', 'pvp-season', 'pvp-talent', 'pvp-tier', 'quest/area', 'quest/category', 'quest', 'quest/type', 'realm', 'region', 'reputation-faction',
-		'reputation-tiers', 'talent', 'tech-talent', 'tech-talent-tree', 'title', 'token'];
+		'reputation-tiers', 'talent', 'tech-talent', 'tech-talent-tree', 'title', 'token'
+	];
 	private $dynamicPages = ['connected-realm', 'mythic-keystone/dungeon', 'mythic-keystone', 'mythic-keystone/period', 'mythic-keystone/season', 'pvp-season',
 		'realm', 'region', 'token'];
 	private $headers;
@@ -32,6 +36,7 @@ class Wow
 	private $lastCount = 0;
 	private $lastTime;
 	private $requestsPerSecond = 100;
+	private $loadedPages = [];
 
 	public function __construct() {
 		include __DIR__.'/config.php';
@@ -96,39 +101,51 @@ class Wow
 
 	public function getPage($url, $namespace = 'static-us') {
 		$fileName = __DIR__.'/cache/'.str_replace('/', '-', $url).'.json';
-		if (file_exists($fileName))
+		if (in_array($url, $this->loadedPages))
+			return false;
+		$this->loadedPages[] = $url;
+		echo "Loading {$url} Index (namespace {$namespace})\n";
+		if (!in_array($namespace, ['dynamic-us', 'profile-us']) && file_exists($fileName))
 			return json_decode(file_get_contents($fileName), true);
 		$this->throttle();
-		$response = $this->client->get($url, ['query' => ['locale' => 'en_US', 'namespace' => $namespace], 'headers' => $this->headers]);
+		try {
+			$response = $this->client->get($url, ['query' => ['locale' => 'en_US', 'namespace' => $namespace], 'headers' => $this->headers]);
+		} catch (RequestException $e) {
+			echo "Got Exception ".$e->getMessage().PHP_EOL;
+			return false;
+		}
 		$code = $response->getStatusCode(); // 200
 		$body = $response->getBody();
-		if ($code != 200)
-			die('Invalid Response Code '.$code.' Response:'.$body);
+		if ($code != 200) {
+			echo 'Invalid Response Code '.$code.' Response:'.$body.PHP_EOL;
+			return false;
+		}
 		$json = json_decode($body, true);
 		if (!isset($json['_links']))
 			die('There was an error getting the response: '.var_export($response,true).PHP_EOL);
-		file_put_contents($fileName, json_encode($json, JSON_PRETTY_PRINT));
+		//if (!in_array($namespace, ['dynamic-us', 'profile-us']))
+			file_put_contents($fileName, json_encode($json, JSON_PRETTY_PRINT));
 		return $json;
 	}
 
 	public function loadSubPages($response) {
 		foreach ($response as $key => $values)
-			if ($key != '_links' && is_array($values))
+			if (!in_array($key, ['_links']) && is_array($values))
 				foreach ($values as $subKey => $subValues)
 					if (isset($subValues['href']) || (isset($subValues['key']) && isset($subValues['key']['href']))) {
 						$href = isset($subValues['href']) ? $subValues['href'] : $subValues['key']['href'];
 		                $href = parse_url($href);
 		                $namespace = 'static-us';
-		                if (preg_match('/^namespace=(.*)$/', $href['query'], $matches))
+		                if (preg_match('/namespace=(.*)$/', $href['query'], $matches))
 		                {
                             $namespace = $matches[1];
                             unset($href['query']);
 						}
 						$href = $this->unparse_url($href);
 						$href = str_replace($this->baseUri, '', $href);
-						echo "	Loading Page {$href} (namespace {$namespace})";
 						$subResponse = $this->getPage($href, $namespace);
-						echo PHP_EOL;
+						if ($subResponse === false)
+							continue;
 						$this->loadSubPages($subResponse);
 					}
 	}
@@ -136,14 +153,15 @@ class Wow
 	public function loadIndexes() {
 		foreach ($this->indexPages as $page) {
 			$namespace = in_array($page, $this->dynamicPages) ? 'dynamic-us' : 'static-us';
-			echo "Loading {$page} Index (namespace {$namespace})";
 			$response = $this->getPage($page.'/index', $namespace);
+			if ($response === false)
+				continue;
 			$count = 0;
 			foreach ($response as $key => $values)
 				if ($key != '_links')
 					$count += is_array($values) ? count($values) : 1;
 			echo " {$count} items loaded\n";
-			if (in_array($page, ['pet', 'pet-ability']))
+			//if (in_array($page, ['pet', 'pet-ability']))
 				$this->loadSubPages($response);
 		}
 	}
