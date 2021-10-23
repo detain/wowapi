@@ -22,7 +22,8 @@ class Wow
 	private $clientId;
 	private $clientSecret;
 	private $baseUri = 'https://us.api.blizzard.com/data/wow/';
-	private $indexPages = ['achievement-category', 'achievement', 'azerite-essence', 'connected-realm', 'covenant/conduit', 'covenant', 'covenant/soulbind',
+	private $indexPages = [
+		'achievement-category', 'achievement', 'azerite-essence', 'connected-realm', 'covenant/conduit', 'covenant', 'covenant/soulbind',
 		'creature-family', 'creature-type', 'guild-crest', 'item-class', 'item-set', 'journal-encounter', 'journal-expansion', 'journal-instance', 'keystone-affix',
 		'modified-crafting/category', 'modified-crafting', 'modified-crafting/reagent-slot-type', 'mount', 'mythic-keystone/dungeon', 'mythic-keystone',
 		'mythic-keystone/period', 'mythic-keystone/season', 'pet-ability', 'pet', 'playable-class', 'playable-race', 'playable-specialization', 'power-type',
@@ -37,6 +38,7 @@ class Wow
 	private $lastTime;
 	private $requestsPerSecond = 100;
 	private $loadedPages = [];
+	private $skipKeys = ['_links'];
 
 	public function __construct() {
 		include __DIR__.'/config.php';
@@ -50,7 +52,8 @@ class Wow
 			//'throttle_delay' => 1000 // in milliseconds
 		]);
 		if (!file_exists(__DIR__.'/cache'))
-			mkdir(__DIR__.'/cache', 777);
+			mkdir(__DIR__.'/cache', 1777);
+		//$this->skipKeys[] = 'media';
 	}
 
 	public function unparse_url($parsed_url) {
@@ -73,7 +76,7 @@ class Wow
 			$this->lastCount = 0;
 		}
 		$this->lastCount++;
-		echo " Throttle Count {$this->lastCount} ";
+		echo " T:{$this->lastCount} ";
 		if ($this->lastCount >= $this->requestsPerSecond) {
 			echo "Throttle Sleeping for 1 second\n";
 			sleep(1);
@@ -99,55 +102,83 @@ class Wow
 		echo "Logged in with access token {$this->accessToken}\n";
 	}
 
-	public function getPage($url, $namespace = 'static-us') {
-		$fileName = __DIR__.'/cache/'.str_replace('/', '-', $url).'.json';
-		if (in_array($url, $this->loadedPages))
+	public function getPage($page, $namespace = 'static-us') {
+		$fileNameOld = __DIR__.'/cache/'.str_replace('/', '-', $page).'.json';
+		$fileNameNew = __DIR__.'/cache/'.$page.'.json';
+		$dirName = dirname($fileNameNew);
+		if (in_array($page, $this->loadedPages))
 			return false;
-		$this->loadedPages[] = $url;
-		echo "Loading {$url} Index (namespace {$namespace})\n";
-		if (!in_array($namespace, ['dynamic-us', 'profile-us']) && file_exists($fileName))
-			return json_decode(file_get_contents($fileName), true);
+		$this->loadedPages[] = $page;
+		//if (!in_array($namespace, ['dynamic-us', 'profile-us'])) {
+			if (file_exists($fileNameOld)) {
+				echo "  {$page}[c]";
+				$contents = file_get_contents($fileNameOld);
+				if (!file_exists($dirName))
+					mkdir($dirName, 0777, true);
+				file_put_contents($fileNameNew, $contents);
+				unlink($fileNameOld);
+				return json_decode($contents, true);
+			} elseif (file_exists($fileNameNew)) {
+				echo "  {$page}[c]";
+				$contents = file_get_contents($fileNameNew);
+				return json_decode($contents, true);
+			}
+		//}
 		$this->throttle();
+		echo "  {$page}";
 		try {
-			$response = $this->client->get($url, ['query' => ['locale' => 'en_US', 'namespace' => $namespace], 'headers' => $this->headers]);
+			$response = $this->client->get($page, ['query' => ['locale' => 'en_US', 'namespace' => $namespace], 'headers' => $this->headers]);
 		} catch (RequestException $e) {
-			echo "Got Exception ".$e->getMessage().PHP_EOL;
+			echo "    Got Exception ".$e->getMessage().PHP_EOL;
 			return false;
 		}
 		$code = $response->getStatusCode(); // 200
 		$body = $response->getBody();
 		if ($code != 200) {
-			echo 'Invalid Response Code '.$code.' Response:'.$body.PHP_EOL;
+			echo '    Invalid Response Code '.$code.' Response:'.$body.PHP_EOL;
 			return false;
 		}
 		$json = json_decode($body, true);
 		if (!isset($json['_links']))
-			die('There was an error getting the response: '.var_export($response,true).PHP_EOL);
-		//if (!in_array($namespace, ['dynamic-us', 'profile-us']))
-			file_put_contents($fileName, json_encode($json, JSON_PRETTY_PRINT));
+			die('    There was an error getting the response: '.var_export($response,true).PHP_EOL);
+		if (!file_exists($dirName))
+			mkdir($dirName, 0777, true);
+		file_put_contents($fileNameNew, json_encode($json, JSON_PRETTY_PRINT));
 		return $json;
 	}
 
-	public function loadSubPages($response) {
-		foreach ($response as $key => $values)
-			if (!in_array($key, ['_links']) && is_array($values))
-				foreach ($values as $subKey => $subValues)
+	public function loadSubPages($page, $namespace, $response) {
+		if (preg_match('/^connected-realm\/[0-9]*$/', $page)) {
+			$subResponse = $this->getPage($page.'/auctions', $namespace);
+			if ($subResponse !== false)
+				$this->loadSubPages($page.'/auctions', $namespace, $subResponse);
+		}
+		foreach ($response as $key => $values) {
+			if (!in_array($key, $this->skipKeys) && is_array($values)) {
+				foreach ($values as $subKey => $subValues) {
+					if (in_array($subKey, $this->skipKeys))
+						continue;
+                    if (isset($subValues['item']) && isset($subValues['item']['id'])) {
+						$subResponse = $this->getPage('item/'.$subValues['item']['id']);
+						if ($subResponse !== false)
+							$this->loadSubPages('item/'.$subValues['item']['id'], $namespace, $subResponse);
+                    }
 					if (isset($subValues['href']) || (isset($subValues['key']) && isset($subValues['key']['href']))) {
 						$href = isset($subValues['href']) ? $subValues['href'] : $subValues['key']['href'];
 		                $href = parse_url($href);
 		                $namespace = 'static-us';
 		                if (preg_match('/namespace=(.*)$/', $href['query'], $matches))
-		                {
                             $namespace = $matches[1];
-                            unset($href['query']);
-						}
+                        unset($href['query']);
 						$href = $this->unparse_url($href);
 						$href = str_replace($this->baseUri, '', $href);
 						$subResponse = $this->getPage($href, $namespace);
-						if ($subResponse === false)
-							continue;
-						$this->loadSubPages($subResponse);
+						if ($subResponse !== false)
+							$this->loadSubPages($href, $namespace, $subResponse);
 					}
+				}
+			}
+		}
 	}
 
 	public function loadIndexes() {
@@ -158,11 +189,9 @@ class Wow
 				continue;
 			$count = 0;
 			foreach ($response as $key => $values)
-				if ($key != '_links')
-					$count += is_array($values) ? count($values) : 1;
+				$count += is_array($values) ? count($values) : 1;
+			$this->loadSubPages($page.'/index', $namespace, $response);
 			echo " {$count} items loaded\n";
-			//if (in_array($page, ['pet', 'pet-ability']))
-				$this->loadSubPages($response);
 		}
 	}
 }
@@ -171,3 +200,5 @@ class Wow
 $wow = new Wow();
 $wow->login();
 $wow->loadIndexes();
+//$response = $wow->getPage('connected-realm/index', 'dynamic-us');
+//$wow->loadSubPages('connected-realm/index', 'dynamic-us', $response);
