@@ -22,16 +22,8 @@ class Wow
 	private $clientId;
 	private $clientSecret;
 	private $baseUri = 'https://us.api.blizzard.com/data/wow/';
-	private $indexPages = [
-		'achievement-category', 'achievement', 'azerite-essence', 'connected-realm', 'covenant/conduit', 'covenant', 'covenant/soulbind',
-		'creature-family', 'creature-type', 'guild-crest', 'item-class', 'item-set', 'journal-encounter', 'journal-expansion', 'journal-instance', 'keystone-affix',
-		'modified-crafting/category', 'modified-crafting', 'modified-crafting/reagent-slot-type', 'mount', 'mythic-keystone/dungeon', 'mythic-keystone',
-		'mythic-keystone/period', 'mythic-keystone/season', 'pet-ability', 'pet', 'playable-class', 'playable-race', 'playable-specialization', 'power-type',
-		'profession', 'pvp-season', 'pvp-talent', 'pvp-tier', 'quest/area', 'quest/category', 'quest', 'quest/type', 'realm', 'region', 'reputation-faction',
-		'reputation-tiers', 'talent', 'tech-talent', 'tech-talent-tree', 'title', 'token'
-	];
-	private $dynamicPages = ['connected-realm', 'mythic-keystone/dungeon', 'mythic-keystone', 'mythic-keystone/period', 'mythic-keystone/season', 'pvp-season',
-		'realm', 'region', 'token'];
+	private $indexPages = ['achievement-category', 'achievement', 'azerite-essence', 'connected-realm', 'covenant/conduit', 'covenant', 'covenant/soulbind', 'creature-family', 'creature-type', 'guild-crest', 'item-class', 'item-set', 'journal-encounter', 'journal-expansion', 'journal-instance', 'keystone-affix', 'modified-crafting/category', 'modified-crafting', 'modified-crafting/reagent-slot-type', 'mount', 'mythic-keystone/dungeon', 'mythic-keystone', 'mythic-keystone/period', 'mythic-keystone/season', 'pet-ability', 'pet', 'playable-class', 'playable-race', 'playable-specialization', 'power-type','profession', 'pvp-season', 'pvp-talent', 'pvp-tier', 'quest/area', 'quest/category', 'quest', 'quest/type', 'realm', 'region', 'reputation-faction','reputation-tiers', 'talent', 'tech-talent', 'tech-talent-tree', 'title', 'token'];
+	private $dynamicPages = ['connected-realm', 'mythic-keystone/dungeon', 'mythic-keystone', 'mythic-keystone/period', 'mythic-keystone/season', 'pvp-season', 'realm', 'region', 'token'];
 	private $headers;
 	private $accessToken;
 	private $lastCount = 0;
